@@ -1,20 +1,18 @@
-import { startCall, fetchCall } from "../services/acsService.js";
+// Mock DB for now
+let callHistory = [];
 
-export const createCall = async (req, res) => {
-  try {
-    const call = await startCall(req.body);
-    res.status(201).json(call);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+exports.saveNotes = (req, res) => {
+  const { callId, notes } = req.body;
+  if (!callId || !notes) {
+    return res.status(400).json({ error: "callId and notes are required" });
   }
+
+  const record = { callId, notes, timestamp: new Date() };
+  callHistory.push(record);
+
+  res.status(201).json({ message: "Notes saved", record });
 };
 
-export const getCall = async (req, res) => {
-  try {
-    const call = await fetchCall(req.params.id);
-    if (!call) return res.status(404).json({ message: "Call not found" });
-    res.json(call);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+exports.getHistory = (req, res) => {
+  res.json({ history: callHistory });
 };

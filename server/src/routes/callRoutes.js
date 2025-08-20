@@ -1,9 +1,11 @@
-import express from "express";
-import { createCall, getCall } from "../controllers/callController.js";
-
+const express = require("express");
 const router = express.Router();
+const callController = require("../controllers/callController");
 
-router.post("/", createCall);  // POST /api/calls
-router.get("/:id", getCall);   // GET /api/calls/:id
+// Save call notes
+router.post("/notes", callController.saveNotes);
 
-export default router;
+// Get call history
+router.get("/history", callController.getHistory);
+
+module.exports = router;
