@@ -1,12 +1,13 @@
 import './index.css';
 import { useState } from 'react';
-import DialerPanel from './components/DialerPanel';
-import DTMFInput from './components/DTMFInput';
-import SpeechInput from './components/SpeechInput';
-import CallHistory from './components/CallHistory';
-import Contacts from './components/Contacts';
-import CallNotes from './components/CallNotes';
-import CallRecordingPlayer from './components/CallRecordingPlayer';
+import DialerPanel from './components/Dialer/DialerPanel';
+import DTMFInput from './components/DTMF/DTMFInput';
+import SpeechInput from './components/Speech/SpeechInput';
+import CallHistory from './components/Calls/CallHistory';
+import Contacts from './components/Contacts/Contacts';
+import CallNotes from './components/Calls/CallNotes';
+import CallRecordingPlayer from './components/Calls/CallRecordingPlayer';
+import TestCallButton from './components/IVRTest/TestCallButton';
 
 function App() {
   // Shared phone number state for dialer and contact selection
@@ -24,6 +25,7 @@ function App() {
         </div>
         <div>
           <DialerPanel phone={phone} setPhone={setPhone} />
+          <TestCallButton phone={phone} />
          </div>
 
         <div>

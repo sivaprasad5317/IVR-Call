@@ -15,3 +15,9 @@ export const fetchCall = async (id) => {
     participants: ["user1", "user2"],
   };
 };
+
+export const getACSToken = async (userId) => {
+  // Placeholder function
+  // Will later call Azure SDK to generate token once credentials are ready
+  return { token: "PLACEHOLDER_TOKEN", expiresOn: new Date(Date.now() + 3600*1000) };
+};

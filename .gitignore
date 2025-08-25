@@ -11,3 +11,6 @@ build/
 
 # Env
 .env
+server/.env
+client/.env
+

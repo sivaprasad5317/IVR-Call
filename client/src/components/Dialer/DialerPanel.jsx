@@ -1,6 +1,8 @@
 import React, { useState, useRef } from "react";
 import { FiPhone, FiMicOff, FiUserPlus } from "react-icons/fi";
 import SaveContactModal from './SaveContactModal';
+import { initCallClient, startCall, hangUpCall, toggleMute } from "./callClient";
+
 
 
 const DIAL_PAD = [
@@ -63,8 +65,31 @@ export default function DialerPanel({ phone, setPhone }) {
     if (val !== "0") handleInput(val);
   };
 
-  const handleCall = () => setCalling((c) => !c);
-  const handleMute = () => setMuted((m) => !m);
+  const handleCall = async () => {
+    if (!calling) {
+      try {
+        // Get ACS token from backend
+        const res = await fetch("http://localhost:4000/api/acs/token");
+        const data = await res.json();
+  
+        await initCallClient(data.token, data.userId);
+        startCall(phone);
+        setCalling(true);
+      } catch (err) {
+        console.error("Call failed:", err);
+        alert("Failed to start call");
+      }
+    } else {
+      hangUpCall();
+      setCalling(false);
+    }
+  };
+  
+  const handleMute = () => {
+    toggleMute();
+    setMuted((m) => !m);
+  };
+  
 
   return (
     <div className="w-full max-w-sm mx-auto bg-white rounded-xl shadow-lg p-6 flex flex-col gap-4">
