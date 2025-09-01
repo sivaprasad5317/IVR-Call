@@ -1,3 +1,7 @@
+import { CommunicationIdentityClient } from "@azure/communication-identity";
+import dotenv from 'dotenv';
+dotenv.config();
+
 export const startCall = async (data) => {
   // TODO: integrate with Azure ACS
   return {
@@ -16,8 +20,30 @@ export const fetchCall = async (id) => {
   };
 };
 
-export const getACSToken = async (userId) => {
-  // Placeholder function
-  // Will later call Azure SDK to generate token once credentials are ready
-  return { token: "PLACEHOLDER_TOKEN", expiresOn: new Date(Date.now() + 3600*1000) };
+export const verifyACSConnection = async () => {
+  try {
+    const client = new CommunicationIdentityClient(process.env.AZURE_ACS_CONNECTION_STRING);
+    await client.createUser();
+    console.log("✅ ACS Connection successful");
+    return true;
+  } catch (error) {
+    console.error("❌ ACS Connection failed:", error.message);
+    return false;
+  }
+};
+
+export const getACSToken = async () => {
+  try {
+    const client = new CommunicationIdentityClient(process.env.AZURE_ACS_CONNECTION_STRING);
+    const user = await client.createUser();
+    const tokenResponse = await client.getToken(user, ["voip"]);
+    return {
+      token: tokenResponse.token,
+      expiresOn: tokenResponse.expiresOn,
+      userId: user.communicationUserId
+    };
+  } catch (error) {
+    console.error("ACS Token Generation Error:", error);
+    throw error;
+  }
 };
