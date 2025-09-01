@@ -1,37 +1,37 @@
-import React from "react";
+import React, { useState } from "react";
+import { getACSToken, makeCall } from '../Services/api';
 
-const TestCallButton = ({ phone }) => {
-  const startTestCall = async () => {
-    if (!phone) {
-      alert("Please enter a phone number first.");
-      return;
-    }
+export default function TestCallButton({ phone }) {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-    const apiUrl = import.meta.env.VITE_API_URL;
-
+  const handleTestCall = async () => {
     try {
-      const response = await fetch(`${apiUrl}/api/ivr/start`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone }),
-      });
-      const data = await response.json();
-      console.log(data);
-      alert(data.message);
+      setIsLoading(true);
+      setError(null);
+      // First get ACS token
+      const acsData = await getACSToken();
+      // Then initiate call
+      const callData = await makeCall(phone);
+      console.log('Call initiated:', callData);
     } catch (err) {
-      console.error(err);
-      alert("Error starting IVR call");
+      setError(err.message);
+      console.error('Error making test call:', err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <button
-      onClick={startTestCall}
-      className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-    >
-      Start Test Call
-    </button>
+    <div>
+      <button 
+        onClick={handleTestCall}
+        disabled={!phone || isLoading}
+        className="w-full bg-blue-500 text-white p-2 rounded disabled:bg-gray-300"
+      >
+        {isLoading ? 'Initiating Call...' : 'Test Call'}
+      </button>
+      {error && <p className="text-red-500 mt-2">{error}</p>}
+    </div>
   );
-};
-
-export default TestCallButton;
+}
