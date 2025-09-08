@@ -38,7 +38,6 @@ export default function DialerPanel({ phone, setPhone }) {
 
   const handleDialPad = (val, idx) => {
     if (val === "0") {
-      // handle long press for "+"
       longPressTimer.current = setTimeout(() => {
         setPhone((prev) => prev + "+");
       }, 500);
@@ -50,7 +49,6 @@ export default function DialerPanel({ phone, setPhone }) {
       if (longPressTimer.current) {
         clearTimeout(longPressTimer.current);
         longPressTimer.current = null;
-        // If timer didn't finish, treat as normal "0"
         setPhone((prev) => prev + "0");
       }
     }
@@ -69,13 +67,11 @@ export default function DialerPanel({ phone, setPhone }) {
         // 1. Get ACS token from backend
         const acsData = await getACSToken();
 
-        // 2. Initialize ACS client
+        // 2. Initialize ACS client with token
         await initCallClient(acsData.token, acsData.userId);
-
-        // 3. Trigger backend to start call
+        await makeCall(phone, import.meta.env.VITE_ACS_TRIAL_NUMBER);
         const callData = await makeCall(phone);
         console.log("Call initiated:", callData);
-
       } catch (err) {
         console.error("Call failed:", err);
         setError(err.message || "Failed to start call");
@@ -111,7 +107,7 @@ export default function DialerPanel({ phone, setPhone }) {
           title="Save Contact"
           onClick={() => {
             setContactName("");
-            setContactNumber(phone); // pre-fill if available
+            setContactNumber(phone);
             setShowModal(true);
           }}
         >

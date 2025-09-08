@@ -1,53 +1,47 @@
-// src/components/Dialer/callClient.js
-
+// callClient.js
 import { CallClient } from "@azure/communication-calling";
 import { AzureCommunicationTokenCredential } from "@azure/communication-common";
 
-let callAgent;
-let deviceManager;
 let callClient;
+let callAgent;
 let currentCall;
+let isMuted = false;
 
-export async function initCallClient(token) {
-  try {
-    const tokenCredential = new AzureCommunicationTokenCredential(token);
-    callClient = new CallClient();
-    deviceManager = await callClient.getDeviceManager();
+export const initCallClient = async (token, userId) => {
+  const tokenCredential = new AzureCommunicationTokenCredential(token);
+  callClient = new CallClient();
+  callAgent = await callClient.createCallAgent(tokenCredential, { displayName: userId });
+  console.log("✅ Call Agent initialized");
+};
 
-    callAgent = await callClient.createCallAgent(tokenCredential, { displayName: "QA Tester" });
-
-    return { callAgent, deviceManager };
-  } catch (error) {
-    console.error("Failed to initialize Call Client:", error);
-    throw error;
-  }
-}
-
-export function startCall(phoneNumber) {
+export const makePSTNCall = async (calleeNumber, callerACSNumber) => {
   if (!callAgent) throw new Error("Call Agent not initialized");
-
-  currentCall = callAgent.startCall([{ phoneNumber }]);
-  
-  currentCall.on("stateChanged", () => {
-    console.log("Call state:", currentCall.state);
-  });
-
+  currentCall = callAgent.startCall(
+    [{ phoneNumber: calleeNumber }],
+    { alternateCallerId: { phoneNumber: callerACSNumber } }
+  );
+  console.log("📞 Call started to:", calleeNumber);
   return currentCall;
-}
+};
 
-export function hangUpCall() {
+export const hangUpCall = () => {
   if (currentCall) {
     currentCall.hangUp({ forEveryone: true });
     currentCall = null;
+    console.log("✋ Call ended");
   }
-}
+};
 
-export function toggleMute() {
+export const toggleMute = () => {
   if (currentCall) {
-    if (currentCall.isMuted) {
-      currentCall.unmute().catch((err) => console.error("Unmute failed:", err));
+    if (!isMuted) {
+      currentCall.mute();
+      isMuted = true;
+      console.log("🔇 Muted");
     } else {
-      currentCall.mute().catch((err) => console.error("Mute failed:", err));
+      currentCall.unmute();
+      isMuted = false;
+      console.log("🎙️ Unmuted");
     }
   }
-}
+};
