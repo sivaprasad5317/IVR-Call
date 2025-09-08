@@ -1,22 +1,13 @@
 import { CommunicationIdentityClient } from "@azure/communication-identity";
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
 dotenv.config();
 
-export const startCall = async (data) => {
-  // TODO: integrate with Azure ACS
+export const startCall = async (phoneNumber) => {
+  // For trial purposes, just return mock call data
   return {
     id: Date.now().toString(),
     status: "started",
-    participants: data.participants || [],
-  };
-};
-
-export const fetchCall = async (id) => {
-  // TODO: fetch call details from ACS
-  return {
-    id,
-    status: "in-progress",
-    participants: ["user1", "user2"],
+    participants: [phoneNumber],
   };
 };
 
@@ -40,7 +31,7 @@ export const getACSToken = async () => {
     return {
       token: tokenResponse.token,
       expiresOn: tokenResponse.expiresOn,
-      userId: user.communicationUserId
+      userId: user.communicationUserId,
     };
   } catch (error) {
     console.error("ACS Token Generation Error:", error);

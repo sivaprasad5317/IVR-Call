@@ -1,38 +1,18 @@
-import express from 'express';
-import morgan from 'morgan';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-
-import { getACSToken, verifyACSConnection } from './services/acsService.js';
-import callRoutes from './routes/callRoutes.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-dotenv.config();
+import express from "express";
+import cors from "cors";
+import callRoutes from "./routes/callRoutes.js";
 
 const app = express();
 app.use(express.json());
-app.use(cors());
-app.use(morgan("dev"));
 
-// Middleware
-app.use(async (req, res, next) => {
-  if (req.path.includes('/api/acs')) {
-    const isConnected = await verifyACSConnection();
-    if (!isConnected) {
-      return res.status(503).json({ error: "Azure Communication Services unavailable" });
-    }
-  }
-  next();
-});
+// Enable CORS for frontend
+app.use(cors({
+  origin: "http://localhost:5173", // your Vite frontend
+  methods: ["GET","POST"]
+}));
 
-// Routes
-app.use("/api", callRoutes);
+// Prefix routes to match frontend
+app.use("/api/acs", callRoutes);    // GET /api/acs/getToken
+app.use("/api/calls", callRoutes);  // POST /api/calls/startCall
 
-const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
-  console.log(`✅ Server running on http://localhost:${PORT}`);
-});
+app.listen(4000, () => console.log("Server running on port 4000"));
