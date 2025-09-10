@@ -3,6 +3,7 @@ import { FiPhone, FiMicOff, FiUserPlus } from "react-icons/fi";
 import SaveContactModal from "./SaveContactModal";
 import { initCallClient, hangUpCall, toggleMute } from "./callClient";
 import { getACSToken, makeCall } from "../Services/api";
+import { contactService } from '../../services/contactService';
 
 const DIAL_PAD = [
   ["1", "", ""],
@@ -184,11 +185,21 @@ export default function DialerPanel({ phone, setPhone }) {
           contactNumber={contactNumber}
           setContactName={setContactName}
           setContactNumber={setContactNumber}
-          onSave={() => {
-            console.log("Saving contact:", contactName, contactNumber);
-            setShowModal(false);
-            setContactName("");
-            setContactNumber();
+          onSave={async () => {
+            try {
+              await contactService.addContact({
+                name: contactName,
+                phone: contactNumber
+              });
+              setShowModal(false);
+              setContactName("");
+              setContactNumber("");
+              setError(null);
+              // The contacts component will automatically update due to the subscription
+            } catch (err) {
+              console.error("Failed to save contact:", err);
+              setError(err.message || "Failed to save contact");
+            }
           }}
           onClose={() => setShowModal(false)}
         />
