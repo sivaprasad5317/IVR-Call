@@ -1,9 +1,9 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { FiPhone, FiMicOff, FiUserPlus } from "react-icons/fi";
 import SaveContactModal from "./SaveContactModal";
-import { initCallClient, hangUpCall, toggleMute } from "./callClient";
-import { getACSToken, makeCall } from "../Services/api";
-import { contactService } from '../../services/contactService';
+import { initCallClient, makePSTNCall, hangUpCall, toggleMute } from "./callClient"; 
+import { getACSToken } from "../Services/api"; 
+import { contactService } from "../../services/contactService";
 
 const DIAL_PAD = [
   ["1", "", ""],
@@ -28,6 +28,25 @@ export default function DialerPanel({ phone, setPhone }) {
   const [contactName, setContactName] = useState("");
   const [contactNumber, setContactNumber] = useState("");
   const [error, setError] = useState(null);
+
+  // NEW STATES for status + timer
+  const [callStatus, setCallStatus] = useState("idle"); // idle | calling | connected | ended
+  const [callStart, setCallStart] = useState(null);
+  const [duration, setDuration] = useState("00:00");
+
+  // Timer updater
+  useEffect(() => {
+    let interval;
+    if (callStatus === "connected" && callStart) {
+      interval = setInterval(() => {
+        const diff = Math.floor((Date.now() - callStart) / 1000);
+        const mins = String(Math.floor(diff / 60)).padStart(2, "0");
+        const secs = String(diff % 60).padStart(2, "0");
+        setDuration(`${mins}:${secs}`);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [callStatus, callStart]);
 
   const handleInput = (val) => {
     setPhone((prev) => prev + val);
@@ -63,24 +82,37 @@ export default function DialerPanel({ phone, setPhone }) {
     if (!calling) {
       try {
         setCalling(true);
+        setCallStatus("calling");
         setError(null);
 
-        // 1. Get ACS token from backend
         const acsData = await getACSToken();
-
-        // 2. Initialize ACS client with token
         await initCallClient(acsData.token, acsData.userId);
-        await makeCall(phone, import.meta.env.VITE_ACS_TRIAL_NUMBER);
-        const callData = await makeCall(phone);
-        console.log("Call initiated:", callData);
+        await makePSTNCall(phone, import.meta.env.VITE_ACS_TRIAL_NUMBER);
+
+        console.log("📞 Call initiated:", phone);
+
+        // simulate connected after 2s (replace with real ACS event)
+        setTimeout(() => {
+          setCallStatus("connected");
+          setCallStart(Date.now());
+        }, 2000);
       } catch (err) {
         console.error("Call failed:", err);
         setError(err.message || "Failed to start call");
         setCalling(false);
+        setCallStatus("idle");
       }
     } else {
       hangUpCall();
       setCalling(false);
+      setCallStatus("ended");
+
+      // reset status after short delay
+      setTimeout(() => {
+        setCallStatus("idle");
+        setDuration("00:00");
+        setCallStart(null);
+      }, 2000);
     }
   };
 
@@ -91,31 +123,48 @@ export default function DialerPanel({ phone, setPhone }) {
 
   return (
     <div className="w-full max-w-sm mx-auto bg-white rounded-xl shadow-lg p-6 flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <input
-          className="flex-1 text-xl px-3 py-2 border rounded focus:outline-none focus:ring"
-          type="text"
-          value={phone}
-          onChange={(e) =>
-            setPhone(e.target.value.replace(/[^\d*#+]/g, ""))
-          }
-          placeholder="Enter phone number"
-          inputMode="tel"
-        />
+      
+      {/* Number / Status Display */}
+      {callStatus === "idle" ? (
+        <div className="flex items-center gap-2">
+          <input
+            className="flex-1 text-xl px-3 py-2 border rounded focus:outline-none focus:ring"
+            type="text"
+            value={phone}
+            onChange={(e) =>
+              setPhone(e.target.value.replace(/[^\d*#+]/g, ""))
+            }
+            placeholder="Enter phone number"
+            inputMode="tel"
+          />
+          <button
+            className="text-gray-500 hover:text-blue-600"
+            title="Save Contact"
+            onClick={() => {
+              setContactName("");
+              setContactNumber(phone);
+              setShowModal(true);
+            }}
+          >
+            <FiUserPlus size={24} />
+          </button>
+        </div>
+      ) : (
+        <div className="text-center">
+          <p className="text-xl font-semibold">{phone}</p>
+          {callStatus === "calling" && (
+            <p className="text-gray-500">Calling...</p>
+          )}
+          {callStatus === "connected" && (
+            <p className="text-green-600">{duration}</p>
+          )}
+          {callStatus === "ended" && (
+            <p className="text-red-500">Call ended</p>
+          )}
+        </div>
+      )}
 
-        <button
-          className="text-gray-500 hover:text-blue-600"
-          title="Save Contact"
-          onClick={() => {
-            setContactName("");
-            setContactNumber(phone);
-            setShowModal(true);
-          }}
-        >
-          <FiUserPlus size={24} />
-        </button>
-      </div>
-
+      {/* Dial Pad */}
       <div className="grid grid-cols-3 gap-3">
         {DIAL_PAD.map(([num, sub], idx) => (
           <button
@@ -135,6 +184,7 @@ export default function DialerPanel({ phone, setPhone }) {
         ))}
       </div>
 
+      {/* Call / Mute / Backspace */}
       <div className="flex items-center justify-between mt-2">
         <button
           className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-white font-bold transition ${
@@ -189,13 +239,12 @@ export default function DialerPanel({ phone, setPhone }) {
             try {
               await contactService.addContact({
                 name: contactName,
-                phone: contactNumber
+                phone: contactNumber,
               });
               setShowModal(false);
               setContactName("");
               setContactNumber("");
               setError(null);
-              // The contacts component will automatically update due to the subscription
             } catch (err) {
               console.error("Failed to save contact:", err);
               setError(err.message || "Failed to save contact");
