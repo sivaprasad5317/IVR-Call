@@ -1,40 +1,49 @@
 import { CommunicationIdentityClient } from "@azure/communication-identity";
+import { CallAutomationClient } from "@azure/communication-call-automation";
 import dotenv from "dotenv";
 dotenv.config();
 
-export const startCall = async (phoneNumber) => {
-  // For trial purposes, just return mock call data
-  return {
-    id: Date.now().toString(),
-    status: "started",
-    participants: [phoneNumber],
-  };
-};
+const ACS_CONNECTION_STRING = process.env.AZURE_ACS_CONNECTION_STRING;
+const ACS_PHONE_NUMBER = process.env.ACS_PHONE_NUMBER;
+const PUBLIC_CALLBACK_URL = process.env.PUBLIC_CALLBACK_URL;
 
-export const verifyACSConnection = async () => {
-  try {
-    const client = new CommunicationIdentityClient(process.env.AZURE_ACS_CONNECTION_STRING);
-    await client.createUser();
-    console.log("✅ ACS Connection successful");
-    return true;
-  } catch (error) {
-    console.error("❌ ACS Connection failed:", error.message);
-    return false;
-  }
-};
+const identityClient = new CommunicationIdentityClient(ACS_CONNECTION_STRING);
+const callClient = new CallAutomationClient(ACS_CONNECTION_STRING);
 
+/**
+ * Generate ACS user + token for frontend
+ */
 export const getACSToken = async () => {
   try {
-    const client = new CommunicationIdentityClient(process.env.AZURE_ACS_CONNECTION_STRING);
-    const user = await client.createUser();
-    const tokenResponse = await client.getToken(user, ["voip"]);
+    const user = await identityClient.createUser();
+    const tokenResponse = await identityClient.getToken(user, ["voip"]);
     return {
       token: tokenResponse.token,
       expiresOn: tokenResponse.expiresOn,
       userId: user.communicationUserId,
     };
-  } catch (error) {
-    console.error("ACS Token Generation Error:", error);
-    throw error;
+  } catch (err) {
+    console.error("Error generating ACS token:", err);
+    throw err;
+  }
+};
+
+/**
+ * Make an outgoing PSTN call
+ */
+export const makeOutgoingCall = async (toNumber) => {
+  try {
+    const callResult = await callClient.createCall({
+      source: { phoneNumber: ACS_PHONE_NUMBER },
+      targets: [{ phoneNumber: toNumber }],
+      callbackUri: `${PUBLIC_CALLBACK_URL}/api/calls/callback`,
+      requestedModalities: ["audio"],
+    });
+
+    console.log("📞 Call started:", callResult.callConnectionId);
+    return callResult;
+  } catch (err) {
+    console.error("Error starting PSTN call:", err);
+    throw err;
   }
 };
