@@ -1,32 +1,35 @@
 import express from "express";
-import { getACSToken, startCall } from "../services/acsService.js";
+import { getACSToken, makeOutgoingCall } from "../services/acsService.js";
 
 const router = express.Router();
 
-// GET /api/acs/getToken
+// Frontend requests ACS token
 router.get("/getToken", async (req, res) => {
   try {
-    const tokenResponse = await getACSToken();
-    res.json(tokenResponse);
+    const acsData = await getACSToken();
+    res.json(acsData);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Failed to get ACS token" });
   }
 });
 
-// POST /api/calls/startCall
+// Make PSTN call
 router.post("/startCall", async (req, res) => {
   try {
-    const { phoneNumber, callerACSNumber } = req.body;
-    const callResponse = await startCall(phoneNumber, callerACSNumber);
-    res.json(callResponse);
+    const { phoneNumber } = req.body;
+    if (!phoneNumber) {
+      return res.status(400).json({ error: "Missing phoneNumber" });
+    }
+    const callResponse = await makeOutgoingCall(phoneNumber);
+    res.json({ success: true, callResponse });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Failed to start call" });
   }
 });
 
-// ACS Callback (can be on same router)
-router.post("/callbacks/acs", (req, res) => {
-  console.log("📩 ACS Callback Event:", req.body);
+// ACS callback webhook
+router.post("/callback", (req, res) => {
+  console.log("📩 ACS Callback:", JSON.stringify(req.body, null, 2));
   res.sendStatus(200);
 });
 
