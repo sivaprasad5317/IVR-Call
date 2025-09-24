@@ -8,13 +8,16 @@ const api = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
+// ------------------- Get ACS Token -------------------
 export const getACSToken = async () => {
-  const response = await api.get("/api/acs/getToken");
+  const response = await api.get("/api/acs/getToken"); // matches backend
   return response.data;
 };
 
+// ------------------- Make PSTN Call -------------------
 export const makeCall = async (phoneNumber) => {
-  const ACS_TRIAL_NUMBER = import.meta.env.VITE_ACS_TRIAL_NUMBER || "+18332404099";
-  const response = await api.post("/api/calls/startCall", { phoneNumber, callerACSNumber: ACS_TRIAL_NUMBER });
+  const response = await api.post("/api/acs/make-call", {
+    to: phoneNumber, // matches backend expected payload
+  });
   return response.data;
 };
