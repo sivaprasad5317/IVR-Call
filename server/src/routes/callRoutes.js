@@ -1,9 +1,9 @@
 import express from "express";
 import { getACSToken, makeOutgoingCall } from "../services/acsService.js";
+import { broadcastCallEvent } from "../app.js";
 
 const router = express.Router();
 
-// Frontend requests ACS token
 router.get("/getToken", async (req, res) => {
   try {
     const acsData = await getACSToken();
@@ -13,7 +13,6 @@ router.get("/getToken", async (req, res) => {
   }
 });
 
-// Make PSTN call
 router.post("/startCall", async (req, res) => {
   try {
     const { phoneNumber } = req.body;
@@ -27,9 +26,44 @@ router.post("/startCall", async (req, res) => {
   }
 });
 
-// ACS callback webhook
 router.post("/callback", (req, res) => {
-  console.log("📩 ACS Callback:", JSON.stringify(req.body, null, 2));
+  const event = req.body;
+  console.log("📩 ACS Callback:", JSON.stringify(event, null, 2));
+
+  switch (event.eventType) {
+    case "CallConnected":
+      broadcastCallEvent({
+        type: "connected",
+        callId: event.callConnectionId,
+      });
+      break;
+
+    case "CallDisconnected":
+    case "CallEnded":
+      broadcastCallEvent({
+        type: "ended",
+        callId: event.callConnectionId,
+      });
+      break;
+
+    case "ParticipantsUpdated":
+      broadcastCallEvent({
+        type: "participants",
+        data: event.participants,
+      });
+      break;
+
+    case "ToneReceived":
+      broadcastCallEvent({
+        type: "tone",
+        tone: event.toneInfo?.tone,
+      });
+      break;
+
+    default:
+      console.log("⚠️ Unhandled event:", event.eventType);
+  }
+
   res.sendStatus(200);
 });
 

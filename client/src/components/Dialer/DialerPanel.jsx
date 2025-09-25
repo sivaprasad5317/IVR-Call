@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { FiPhone, FiMicOff, FiUserPlus } from "react-icons/fi";
 import SaveContactModal from "./SaveContactModal";
-import { initCallClient, makePSTNCall, hangUpCall, toggleMute } from "./callClient"; 
+import { initCallClient, makePSTNCall, hangUpCall, onCallEvents, toggleMute } from "./callClient"; 
 import { getACSToken } from "../Services/api"; 
 import { contactService } from "../../services/contactService";
 
@@ -47,7 +47,33 @@ export default function DialerPanel({ phone, setPhone }) {
     }
     return () => clearInterval(interval);
   }, [callStatus, callStart]);
-
+  
+  useEffect(() => {
+    const ws = new WebSocket("wss://5f5b17ccd9ce.ngrok-free.app");
+  
+    ws.onmessage = (message) => {
+      const data = JSON.parse(message.data);
+      console.log("📡 WebSocket message:", data);
+  
+      if (data.type === "connected") {
+        setCallStatus("connected");
+        setCallStart(Date.now());
+      } else if (data.type === "ended") {
+        setCallStatus("ended");
+        setCalling(false);
+        setTimeout(() => {
+          setCallStatus("idle");
+          setDuration("00:00");
+          setCallStart(null);
+        }, 2000);
+      }
+    };
+  
+    return () => {
+      ws.close();
+    };
+  }, []);
+  
   const handleInput = (val) => {
     setPhone((prev) => prev + val);
   };
@@ -88,14 +114,25 @@ export default function DialerPanel({ phone, setPhone }) {
         const acsData = await getACSToken();
         await initCallClient(acsData.token, acsData.userId);
         await makePSTNCall(phone, import.meta.env.VITE_ACS_TRIAL_NUMBER);
-
+        
+        // Listen for SDK call events
+        onCallEvents(
+          () => {
+            setCallStatus("connected");
+            setCallStart(Date.now());
+          },
+          () => {
+            setCallStatus("ended");
+            setCalling(false);
+            setTimeout(() => {
+              setCallStatus("idle");
+              setDuration("00:00");
+              setCallStart(null);
+            }, 2000);
+          }
+        );
         console.log("📞 Call initiated:", phone);
 
-        // simulate connected after 2s (replace with real ACS event)
-        setTimeout(() => {
-          setCallStatus("connected");
-          setCallStart(Date.now());
-        }, 2000);
       } catch (err) {
         console.error("Call failed:", err);
         setError(err.message || "Failed to start call");
