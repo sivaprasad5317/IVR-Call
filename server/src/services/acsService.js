@@ -36,6 +36,7 @@ export const makeOutgoingCall = async (toNumber) => {
     const callResult = await callClient.createCall({
       source: { phoneNumber: ACS_PHONE_NUMBER },
       targets: [{ phoneNumber: toNumber }],
+      // 👇 now aligned with app.js router
       callbackUri: `${PUBLIC_CALLBACK_URL}/api/calls/callback`,
       requestedModalities: ["audio"],
     });

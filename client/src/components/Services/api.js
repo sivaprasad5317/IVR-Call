@@ -10,14 +10,57 @@ const api = axios.create({
 
 // ------------------- Get ACS Token -------------------
 export const getACSToken = async () => {
-  const response = await api.get("/api/acs/getToken"); // matches backend
-  return response.data;
+  try {
+    const response = await api.get("/api/calls/getToken"); // updated route
+    return response.data;
+  } catch (err) {
+    console.error("Failed to get ACS token:", err);
+    throw err;
+  }
 };
 
 // ------------------- Make PSTN Call -------------------
 export const makeCall = async (phoneNumber) => {
-  const response = await api.post("/api/acs/make-call", {
-    to: phoneNumber, // matches backend expected payload
-  });
-  return response.data;
+  try {
+    const response = await api.post("/api/calls/startCall", {
+      phoneNumber, // matches backend payload
+    });
+    return response.data;
+  } catch (err) {
+    console.error("Failed to start call:", err);
+    throw err;
+  }
+};
+
+// ------------------- Save Contact -------------------
+export const addContact = async (contact) => {
+  try {
+    const response = await api.post("/api/contacts", contact);
+    return response.data;
+  } catch (err) {
+    console.error("Failed to save contact:", err);
+    throw err;
+  }
+};
+
+// ------------------- Fetch Contacts -------------------
+export const getContacts = async () => {
+  try {
+    const response = await api.get("/api/contacts");
+    return response.data;
+  } catch (err) {
+    console.error("Failed to fetch contacts:", err);
+    throw err;
+  }
+};
+
+// ------------------- Delete Contact -------------------
+export const deleteContact = async (contactId) => {
+  try {
+    const response = await api.delete(`/api/contacts/${contactId}`);
+    return response.data;
+  } catch (err) {
+    console.error("Failed to delete contact:", err);
+    throw err;
+  }
 };
