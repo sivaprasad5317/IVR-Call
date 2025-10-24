@@ -12,28 +12,17 @@ jobs:
   build_and_deploy_job:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
       contents: read
+      id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Use Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: Install OIDC Client
-        run: npm install @actions/core@1.10.0 @actions/http-client
-
-      - name: Get Id Token
-        uses: actions/github-script@v6
-        id: idtoken
-        with:
-          script: |
-            const core = require('@actions/core')
-            return await core.getIDToken()
-          result-encoding: string
 
       - name: Build And Deploy
         id: builddeploy
@@ -41,13 +30,12 @@ jobs:
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_LEMON_ISLAND_04D32840F }}
           action: "upload"
-          app_location: "./client"
-          api_location: ""         # set if you use Azure Functions for backend
-          output_location: "dist"
-          github_id_token: ${{ steps.idtoken.outputs.result }}
+          app_location: "./client"     # <--- your client folder (adjust if different)
+          api_location: ""             # <--- set if you have Azure Functions in repo (or leave empty)
+          output_location: "dist"      # <--- vite default output
         env:
-          # set production envs for Vite build
-          VITE_API_URL: "https://your-backend-public-url.example"
+          # Replace these values before committing
+          VITE_API_URL: "https://your-backend-public-url.example" 
           VITE_CLIENT_URL: "https://lemon-island-04d32840f.1.azurestaticapps.net"
           VITE_PUBLIC_BASE_URL: "https://lemon-island-04d32840f.1.azurestaticapps.net"
           VITE_PUBLIC_CALLBACK_URL: "https://your-callback-url.example"
