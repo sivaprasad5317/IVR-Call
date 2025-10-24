@@ -1,67 +1,54 @@
-name: Azure Static Web Appss CI/CD
+name: Azure Static Web Apps CI/CD
 
 on:
   push:
     branches:
       - main
   pull_request:
-    types: [opened, synchronize, reopened, closed]
     branches:
       - main
 
 jobs:
   build_and_deploy_job:
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
     runs-on: ubuntu-latest
-    name: Build and Deploy Job
     permissions:
-       id-token: write
-       contents: read
+      id-token: write
+      contents: read
+
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
         with:
-          submodules: true
-          lfs: false
-      - name: Install OIDC Client from Core Package
-        run: npm install @actions/core@1.6.0 @actions/http-client
+          node-version: '20'
+
+      - name: Install OIDC Client
+        run: npm install @actions/core@1.10.0 @actions/http-client
+
       - name: Get Id Token
         uses: actions/github-script@v6
         id: idtoken
         with:
-           script: |
-               const coredemo = require('@actions/core')
-               return await coredemo.getIDToken()
-           result-encoding: string
+          script: |
+            const core = require('@actions/core')
+            return await core.getIDToken()
+          result-encoding: string
+
       - name: Build And Deploy
         id: builddeploy
         uses: Azure/static-web-apps-deploy@v1
-        env:
-          # --- Build-time Vite variables injected from GitHub Secrets ---
-          # Add these secrets in your GitHub repo settings (see instructions below).
-          # Edit or remove any you don't need, or add additional VITE_* entries.
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
-          VITE_PUBLIC_BASE_URL: ${{ secrets.VITE_PUBLIC_BASE_URL }}
-          VITE_PUBLIC_CALLBACK_URL: ${{ secrets.VITE_PUBLIC_CALLBACK_URL }}
-          VITE_CLIENT_URL: ${{ secrets.VITE_CLIENT_URL }}
-          VITE_ACS_TRIAL_NUMBER: ${{ secrets.VITE_ACS_TRIAL_NUMBER }}
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_LEMON_ISLAND_04D32840F }}
           action: "upload"
-          ###### Repository/Build Configurations - These values can be configured to match your app requirements. ######
-          # For more information regarding Static Web App workflow configurations, please visit: https://aka.ms/swaworkflowconfig
-          app_location: "./client" # App source code path
-          api_location: "" # Api source code path - optional
-          output_location: "dist" # Built app content directory - optional
+          app_location: "./client"
+          api_location: ""         # set if you use Azure Functions for backend
+          output_location: "dist"
           github_id_token: ${{ steps.idtoken.outputs.result }}
-          ###### End of Repository/Build Configurations ######
-
-  close_pull_request_job:
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
-    runs-on: ubuntu-latest
-    name: Close Pull Request Job
-    steps:
-      - name: Close Pull Request
-        id: closepullrequest
-        uses: Azure/static-web-apps-deploy@v1
-        with:
-          action: "close"
+        env:
+          # set production envs for Vite build
+          VITE_API_URL: "https://your-backend-public-url.example"
+          VITE_CLIENT_URL: "https://lemon-island-04d32840f.1.azurestaticapps.net"
+          VITE_PUBLIC_BASE_URL: "https://lemon-island-04d32840f.1.azurestaticapps.net"
+          VITE_PUBLIC_CALLBACK_URL: "https://your-callback-url.example"
+          VITE_ACS_TRIAL_NUMBER: "+16892627145"
