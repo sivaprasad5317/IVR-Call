@@ -53,7 +53,7 @@ function App() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
-          <CallHistory />
+          {/* <CallHistory /> */}
           {/* <CallRecordingPlayer recordingUrl="https://yourdomain.com/path/to/recording.mp3" /> */}
           <CallNotes callId="12345" />
         </div>
