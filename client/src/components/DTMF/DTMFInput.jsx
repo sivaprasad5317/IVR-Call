@@ -15,19 +15,17 @@ export default function DTMFInput() {
     }
   };
 
-  const handleAppend = (char) => setDtmf((d) => d + char);
-
   return (
     <div className="bg-white rounded-xl shadow-md p-4 max-w-md mx-auto mt-6">
       <h2 className="text-lg font-semibold mb-2">DTMF Input</h2>
 
-      <div className="flex items-center mb-3">
+      <div className="flex items-center">
         <input
           type="text"
           value={dtmf}
-          onChange={(e) => setDtmf(e.target.value.replace(/[^\d*#]/g, ""))}
-          placeholder="Enter DTMF tones (e.g. 1234#*)"
-          className="border rounded px-2 py-1 flex-1 mr-2"
+          onChange={(e) => setDtmf(e.target.value.replace(/[^\d*#ABCDabcd]/g, ""))}
+          placeholder="Enter DTMF tones (e.g. 1234#* or A-D)"
+          className="border rounded px-2 py-2 flex-1 mr-2"
         />
         <button
           onClick={handleSendDTMF}
@@ -35,22 +33,10 @@ export default function DTMFInput() {
             dtmf ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-400 cursor-not-allowed"
           }`}
           disabled={!dtmf}
+          type="button"
         >
           Send
         </button>
-      </div>
-
-      {/* Dialpad */}
-      <div className="grid grid-cols-3 gap-2 max-w-xs mx-auto">
-        {["1","2","3","4","5","6","7","8","9","*","0","#"].map((k) => (
-          <button
-            key={k}
-            onClick={() => handleAppend(k)}
-            className="p-3 border rounded text-lg font-medium hover:bg-blue-100"
-          >
-            {k}
-          </button>
-        ))}
       </div>
     </div>
   );
