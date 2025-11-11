@@ -2,6 +2,15 @@
 import React, { useRef } from "react";
 import { sendDTMF, getCurrentCall } from "./callClient";
 
+/**
+ * DialPad with:
+ * - long-press 0 -> '+'
+ * - short-press 0 -> '0' (single)
+ * - prevents duplicate firing on touchscreens (touch + mouse events)
+ * - speaks digits locally using speechSynthesis
+ * - sends DTMF if there's an active call (non-blocking)
+ */
+
 const DIAL_PAD = [
   ["1", "ABC"],
   ["2", "ABC"],
@@ -17,15 +26,9 @@ const DIAL_PAD = [
   ["#", ""],
 ];
 
-/**
- * speakDigit(d) uses the browser Speech Synthesis API to speak the pressed key.
- * It is non-blocking and runs only locally (local user will hear it).
- * If speechSynthesis is not supported, it silently does nothing.
- */
 function speakDigit(d) {
   try {
     if (!("speechSynthesis" in window)) return;
-    // map some characters to friendly words
     const mapping = {
       "*": "star",
       "#": "hash",
@@ -45,21 +48,15 @@ function speakDigit(d) {
       C: "C",
       D: "D",
     };
-
     const utteranceText = mapping[d] ?? d;
-    const utterance = new SpeechSynthesisUtterance(utteranceText);
-
-    // Optional: set voice, rate, pitch
-    // const voices = window.speechSynthesis.getVoices();
-    // utterance.voice = voices.find(v => v.lang.startsWith('en')) || voices[0];
-    utterance.rate = 1; // 0.1 - 10
-    utterance.pitch = 1; // 0 - 2
-
-    // Non-blocking: speak and return
-    window.speechSynthesis.cancel(); // cancel queued utterances if you want only last one
-    window.speechSynthesis.speak(utterance);
+    const u = new SpeechSynthesisUtterance(utteranceText);
+    // optional tuning
+    u.rate = 1;
+    u.pitch = 1;
+    // Cancel previously queued utterances so rapid presses only keep the latest
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
   } catch (err) {
-    // don't crash the UI — just log for debugging
     console.warn("speakDigit error:", err);
   }
 }
@@ -68,44 +65,63 @@ export default function DialPad({ onDigit }) {
   const longPressTimer = useRef(null);
   const longPressed = useRef(false);
 
-  const startLongPress = (val) => {
+  // Guard to avoid mouse events after touch events on mobile (prevents double append)
+  const ignoreMouse = useRef(false);
+  const IGNORE_MOUSE_MS = 700;
+
+  // Called when a press starts (mouse or touch)
+  const startPress = (val, eventType) => {
+    // If it's a touch event, mark ignoreMouse so subsequent mouse events are ignored briefly
+    if (eventType === "touch") {
+      ignoreMouse.current = true;
+      // clear after a short window
+      setTimeout(() => {
+        ignoreMouse.current = false;
+      }, IGNORE_MOUSE_MS);
+    }
+
     if (val !== "0") return;
     longPressed.current = false;
+    // start a timer for long press (500ms)
     longPressTimer.current = setTimeout(() => {
       longPressed.current = true;
       if (typeof onDigit === "function") onDigit("+");
-      // speak the plus if you'd like
+      // Speak plus
       speakDigit("+");
       longPressTimer.current = null;
     }, 500);
   };
 
-  const endLongPress = (val) => {
+  // Called when press ends (mouse or touch)
+  const endPress = (val, eventType) => {
+    // If this is a mouse event and a recent touch occurred, ignore it
+    if (eventType === "mouse" && ignoreMouse.current) {
+      // ignore duplicate mouse event after touch
+      return;
+    }
+
     if (val !== "0") return;
+
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
     }
     if (!longPressed.current) {
+      // short press: append "0" and send dtmf for '0'
       if (typeof onDigit === "function") onDigit("0");
-      speakDigit("0");        // speak locally
-      trySendDTMF("0");      // non-blocking send DTMF
+      speakDigit("0");
+      trySendDTMF("0");
     }
     longPressed.current = false;
   };
 
+  // Click handler for non-zero keys (0 handled via press start/end)
   const handleClick = (num) => {
-    if (num !== "0") {
-      // local number input handler
-      if (typeof onDigit === "function") onDigit(num);
-
-      // speak locally
-      // avoid speaking '+' (only from long-press which is handled elsewhere)
-      if (num !== "+") speakDigit(num);
-
-      // try send DTMF
-      trySendDTMF(num);
-    }
+    if (num === "0") return; // 0 handled by touch/mouse press handlers
+    if (typeof onDigit === "function") onDigit(num);
+    // avoid speaking '+' (only created via long-press)
+    if (num !== "+") speakDigit(num);
+    trySendDTMF(num);
   };
 
   const trySendDTMF = async (digit) => {
@@ -115,7 +131,6 @@ export default function DialPad({ onDigit }) {
         await sendDTMF(String(digit));
       }
     } catch (err) {
-      // do not break local behavior; log only
       console.warn("DTMF send failed (ignored):", err && err.message ? err.message : err);
     }
   };
@@ -126,21 +141,33 @@ export default function DialPad({ onDigit }) {
         <button
           key={num}
           className="flex flex-col items-center justify-center bg-gray-100 hover:bg-blue-100 active:bg-blue-200 rounded-lg py-4 text-2xl font-semibold select-none transition"
-          onMouseDown={() => startLongPress(num)}
-          onMouseUp={() => endLongPress(num)}
+          // Mouse events: check ignoreMouse in their handlers
+          onMouseDown={(e) => {
+            if (ignoreMouse.current) return;
+            startPress(num, "mouse");
+          }}
+          onMouseUp={(e) => {
+            if (ignoreMouse.current) return;
+            endPress(num, "mouse");
+          }}
+          // Touch events: mark ignoreMouse and call same logic
+          onTouchStart={(e) => {
+            startPress(num, "touch");
+          }}
+          onTouchEnd={(e) => {
+            endPress(num, "touch");
+          }}
           onMouseLeave={() => {
+            // clear timer if pointer leaves (mouse)
             if (longPressTimer.current) {
               clearTimeout(longPressTimer.current);
               longPressTimer.current = null;
             }
           }}
-          onTouchStart={() => startLongPress(num)}
-          onTouchEnd={() => endLongPress(num)}
-          onClick={() => {
-            if (num !== "0") handleClick(num);
-          }}
+          onClick={() => handleClick(num)}
           tabIndex={0}
           aria-label={`Key ${num}`}
+          type="button"
         >
           <span>{num}</span>
           {sub && <span className="text-xs text-gray-400">{sub}</span>}
