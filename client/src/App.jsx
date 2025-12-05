@@ -5,14 +5,18 @@ import { SignOutButton } from "./components/Auth/SignOutButton";
 import DialerPanel from './components/Dialer/DialerPanel';
 import DTMFInput from './components/DTMF/DTMFInput';
 import SpeechInput from './components/Speech/SpeechInput';
-import CallHistory from './components/Calls/CallHistory';
+// import CallHistory from './components/Calls/CallHistory';
 import Contacts from './components/Contacts/Contacts';
 import CallNotes from './components/Calls/CallNotes';
-import CallRecordingPlayer from './components/Calls/CallRecordingPlayer';
+// import CallRecordingPlayer from './components/Calls/CallRecordingPlayer';
 
 function App() {
   const [user, setUser] = useState(null);
-  const [phone, setPhone] = useState('');
+  
+  // This 'phone' state will now strictly represent the destination number.
+  // DTMF digits will be handled locally inside DialerPanel.
+  const [phone, setPhone] = useState(''); 
+  
   const [contacts, setContacts] = useState([]);
   const isAuthenticated = useIsAuthenticated();
 
@@ -40,7 +44,7 @@ function App() {
   };
 
   if (!isAuthenticated) {
-    return null;
+    return null; // Or return a Login component here
   }
 
   return (
@@ -52,11 +56,15 @@ function App() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        
+        {/* Left Column: Notes & History */}
         <div>
           {/* <CallHistory /> */}
-          {/* <CallRecordingPlayer recordingUrl="https://yourdomain.com/path/to/recording.mp3" /> */}
+          {/* <CallRecordingPlayer recordingUrl="..." /> */}
           <CallNotes callId="12345" />
         </div>
+        
+        {/* Center Column: Dialer */}
         <div>
           <DialerPanel 
             phone={phone} 
@@ -65,6 +73,7 @@ function App() {
           />
          </div>
 
+        {/* Right Column: Contacts & Tools */}
         <div>
           <Contacts 
             contacts={contacts}
@@ -72,6 +81,8 @@ function App() {
             onDelete={handleDeleteContact}
             onAdd={handleAddContact}
           />
+          {/* These components below might be redundant if DialerPanel handles DTMF, 
+              but keeping them as standalone tools is fine. */}
           <DTMFInput />
           <SpeechInput />
         </div>

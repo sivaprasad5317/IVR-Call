@@ -1,16 +1,18 @@
 // server/src/app.js
-/**
- * Explicit dotenv load from the server folder so environment variables
- * are available before any route modules are imported.
- *
- * This version resolves the .env path explicitly (server/.env),
- * logs whether required COSMOS_* vars are present, then proceeds.
- */
 
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
+import express from "express";
+import cors from "cors";
+import http from "http";
+import { WebSocketServer } from "ws";
 
+// Import Routes
+import callRoutes from "./routes/callRoutes.js";
+import contactsRoutes from "./routes/contacts.js";
+
+// ------------------- Environment Setup -------------------
 // Resolve __dirname equivalent in ESM
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,37 +22,39 @@ const explicitEnvPath = path.resolve(__dirname, "..", ".env");
 const envResult = dotenv.config({ path: explicitEnvPath });
 
 if (envResult.error) {
-  console.warn("dotenv.config() error (explicit path):", envResult.error.message);
+  console.warn("⚠️ dotenv config warning:", envResult.error.message);
 } else {
-  console.log(`[dotenv] loaded from ${explicitEnvPath}`);
+  console.log(`✅ [dotenv] loaded from ${explicitEnvPath}`);
 }
 
-// Quick diagnostic prints to confirm presence of expected variables
-console.log("===== Server startup =====");
-console.log("COSMOS_ENDPOINT present?", !!process.env.COSMOS_ENDPOINT);
-console.log("COSMOS_KEY present?", !!process.env.COSMOS_KEY);
-console.log("COSMOS_DATABASE:", process.env.COSMOS_DATABASE);
-console.log("COSMOS_CONTAINER:", process.env.COSMOS_CONTAINER);
+// Diagnostic: Confirm critical variables
+const requiredVars = [
+  "COSMOS_ENDPOINT", 
+  "COSMOS_KEY", 
+  "COSMOS_DATABASE", 
+  "AZURE_ACS_CONNECTION_STRING"
+];
+const missingVars = requiredVars.filter(v => !process.env[v]);
 
-import express from "express";
-import cors from "cors";
-import callRoutes from "./routes/callRoutes.js";
-import contactsRoutes from "./routes/contacts.js";
-import http from "http";
-import { WebSocketServer } from "ws";
+if (missingVars.length > 0) {
+  console.error("❌ Missing required environment variables:", missingVars.join(", "));
+} else {
+  console.log("✅ All critical environment variables present.");
+}
 
+// ------------------- Express Setup -------------------
 const app = express();
 
-// basic middleware
 app.use(express.json());
 app.use(
   cors({
-    origin: "http://localhost:5173",
-    methods: ["GET", "POST", "DELETE"],
+    origin: ["http://localhost:5173", "http://127.0.0.1:5173"], // Allow Vite frontend
+    methods: ["GET", "POST", "DELETE", "PUT"],
+    credentials: true
   })
 );
 
-// WebSocket setup
+// ------------------- WebSocket Setup -------------------
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 let clients = [];
@@ -65,31 +69,37 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("error", (err) => {
-    console.error("WebSocket error:", err && err.message ? err.message : err);
+    console.error("WebSocket error:", err?.message || err);
   });
 });
 
+/**
+ * Broadcast event to all connected UI clients.
+ * Useful for updating the frontend if the server receives a webhook from Azure.
+ */
 export const broadcastCallEvent = (event) => {
   clients.forEach((client) => {
-    if (client.readyState === client.OPEN) {
+    if (client.readyState === 1) { // 1 = OPEN
       try {
         client.send(JSON.stringify(event));
       } catch (err) {
-        console.warn("Failed to send to client:", err && err.message ? err.message : err);
+        console.warn("Failed to send to client:", err);
       }
     }
   });
 };
 
-// Routes
-// mount routes AFTER dotenv load so contacts.js will see process.env correctly
-app.use("/api/calls", callRoutes);
-app.use("/api", contactsRoutes);
+// ------------------- Routes -------------------
+// Mount routes
+app.use("/api/calls", callRoutes); // Handles /getToken, /startCall, /callback
+app.use("/api", contactsRoutes);   // Handles /contacts
 
-// health check
-app.get("/health", (req, res) => res.json({ ok: true }));
+// Health check
+app.get("/health", (req, res) => res.json({ status: "ok", timestamp: new Date() }));
 
+// ------------------- Start Server -------------------
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`👉 Health check: http://localhost:${PORT}/health`);
 });
