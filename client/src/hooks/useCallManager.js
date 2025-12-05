@@ -7,7 +7,8 @@ import {
   onCallEvents,
   onIncomingCall,    
   acceptIncomingCall,
-  rejectIncomingCall 
+  rejectIncomingCall,
+  onMuteChange 
 } from "../components/Dialer/callClient"; 
 import { getACSToken } from "../components/Services/api";
 
@@ -18,7 +19,7 @@ export function useCallManager() {
   const [incomingCaller, setIncomingCaller] = useState(null); 
 
   useEffect(() => {
-    // 1. Monitor Outgoing/Active Call States
+    // 1. Call Status Events
     const cleanupEvents = onCallEvents(
       () => { // Connected
         setStatus("connected");
@@ -32,28 +33,28 @@ export function useCallManager() {
       }
     );
 
-    // 2. Monitor Incoming Calls
+    // 2. Incoming Call Events
     const cleanupIncoming = onIncomingCall((call) => {
-        if (call) {
-            setIncomingCaller(call.callerInfo.phoneNumber);
-        } else {
-            setIncomingCaller(null);
-        }
+        setIncomingCaller(call ? call.callerInfo.phoneNumber : null);
+    });
+
+    // 3. Mute State Events
+    const cleanupMute = onMuteChange((isMutedSDK) => {
+        // Log the state sync
+        console.log(`⚛️ React Hook: Syncing 'muted' state to: [${isMutedSDK}]`);
+        setMuted(isMutedSDK); 
     });
 
     return () => {
       cleanupEvents();
       cleanupIncoming();
+      cleanupMute();
     };
   }, []);
 
-  // --- NEW HELPER: Force Mic Permission ---
   const askDevicePermission = async () => {
     try {
-      // This forces the browser popup for "Allow Microphone"
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
-      // We don't need the stream, just the permission, so stop it immediately
       stream.getTracks().forEach(track => track.stop());
       return true;
     } catch (err) {
@@ -65,10 +66,8 @@ export function useCallManager() {
 
   const startCall = async (phone) => {
     if (!phone) return;
-    
-    // 1. PRE-FLIGHT CHECK
     const hasPermission = await askDevicePermission();
-    if (!hasPermission) return; // Stop here if user said "Block"
+    if (!hasPermission) return;
 
     try {
       setCalling(true);
@@ -91,7 +90,6 @@ export function useCallManager() {
   };
 
   const acceptCall = async () => {
-      // Also check permission before answering
       const hasPermission = await askDevicePermission();
       if (!hasPermission) return;
 
@@ -103,7 +101,7 @@ export function useCallManager() {
             () => { setStatus("ended"); setCalling(false); setTimeout(() => setStatus("idle"), 2000); }
         );
       } catch(e) {
-          console.error("Failed to accept", e);
+          console.error(e);
           setStatus("idle");
       }
   };
@@ -118,8 +116,9 @@ export function useCallManager() {
   };
 
   const toggleMuteCall = async () => {
+    // Log the button click
+    console.log("🖱️ UI: Mute button clicked");
     await toggleMute();
-    setMuted(prev => !prev);
   };
 
   return { 
