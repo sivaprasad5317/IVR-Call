@@ -1,15 +1,19 @@
-// server/src/routes/contacts.js
 import express from "express";
 import { randomUUID } from "crypto";
 import { CosmosClient } from "@azure/cosmos";
 import fs from "fs/promises";
 import path from "path";
 import https from "https";
+import { fileURLToPath } from "url";
 
 const router = express.Router();
 
-// Local JSON path
-const localDataPath = path.resolve(process.cwd(), "src", "data", "contacts.json");
+// Resolve paths for ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Local JSON path (ensures it points to server/src/data/contacts.json)
+const localDataPath = path.resolve(__dirname, "..", "data", "contacts.json");
 
 // Cached Cosmos container
 let cosmosContainer = null;
@@ -97,11 +101,19 @@ async function initCosmos() {
 /* ---------- Local JSON helpers ---------- */
 async function ensureLocalFile() {
   try {
+    // Check if file exists
     await fs.access(localDataPath);
   } catch {
+    // If not, ensure directory exists first
     const dir = path.dirname(localDataPath);
-    await fs.mkdir(dir, { recursive: true });
+    try {
+      await fs.mkdir(dir, { recursive: true });
+    } catch (mkdirErr) {
+      console.error(`[contacts] Failed to create directory ${dir}:`, mkdirErr);
+    }
+    // Create empty array file
     await fs.writeFile(localDataPath, JSON.stringify([], null, 2), "utf8");
+    console.log(`[contacts] Created local storage at: ${localDataPath}`);
   }
 }
 
@@ -120,11 +132,12 @@ function normalizeToArray(data) {
 
 async function readLocalContacts() {
   await ensureLocalFile();
-  const content = await fs.readFile(localDataPath, "utf8");
   try {
+    const content = await fs.readFile(localDataPath, "utf8");
     const parsed = JSON.parse(content || "[]");
     return normalizeToArray(parsed);
-  } catch {
+  } catch (err) {
+    console.warn("[contacts] JSON read error, resetting file:", err.message);
     const backupPath = localDataPath + ".corrupt." + Date.now();
     try { await fs.copyFile(localDataPath, backupPath); } catch {}
     await fs.writeFile(localDataPath, JSON.stringify([], null, 2), "utf8");
@@ -149,7 +162,7 @@ router.get("/contacts", async (req, res) => {
     if (usingCosmos) {
       try {
         const cont = await initCosmos();
-        const q = { query: "SELECT c.id, c.name, c.phone FROM c ORDER BY c.name" };
+        const q = { query: "SELECT * FROM c" }; // Simplified query
         const { resources: items } = await cont.items.query(q).fetchAll();
         return res.json(items || []);
       } catch (err) {
@@ -171,7 +184,7 @@ router.get("/contacts", async (req, res) => {
 router.post("/contacts", async (req, res) => {
   const cfg = getCosmosConfig();
   const usingCosmos = isCosmosConfigured();
-  console.log(`[contacts] POST -> usingCosmos=${usingCosmos} (endpoint=${!!cfg.endpoint}, db=${cfg.database}, container=${cfg.container}) body=${JSON.stringify(req.body).slice(0,200)}`);
+  console.log(`[contacts] POST -> usingCosmos=${usingCosmos}`);
 
   try {
     const { name, phone } = req.body || {};
@@ -216,8 +229,7 @@ router.post("/contacts", async (req, res) => {
       phone: item.phone,
       savedToCosmos: !!createdInCosmos,
       savedToLocal: !!wroteLocal,
-      cosmosError: cosmosError || null,
-      cosmosResource: createdInCosmos || null
+      cosmosError: cosmosError || null
     };
 
     if (!response.savedToCosmos && !response.savedToLocal) {
@@ -239,16 +251,18 @@ router.delete("/contacts/:id", async (req, res) => {
   try {
     if (!contactId) return res.status(400).json({ error: "id is required" });
 
+    // Delete from Cosmos if configured
     if (usingCosmos) {
       try {
         const cont = await initCosmos();
         await cont.item(contactId, contactId).delete();
         console.log("[contacts] Deleted from Cosmos:", contactId);
       } catch (err) {
-        console.error("[contacts] Cosmos delete failed:", err?.message || err);
+        console.error("[contacts] Cosmos delete failed (might not exist):", err?.message);
       }
     }
 
+    // Delete from local JSON
     try {
       let items = await readLocalContacts();
       if (!Array.isArray(items)) items = [];

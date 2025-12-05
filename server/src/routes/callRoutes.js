@@ -4,15 +4,18 @@ import { broadcastCallEvent } from "../app.js";
 
 const router = express.Router();
 
+// GET /api/calls/getToken
 router.get("/getToken", async (req, res) => {
   try {
     const acsData = await getACSToken();
     res.json(acsData);
   } catch (err) {
+    console.error("Error in /getToken:", err);
     res.status(500).json({ error: "Failed to get ACS token" });
   }
 });
 
+// POST /api/calls/startCall (Server-side dialing)
 router.post("/startCall", async (req, res) => {
   try {
     const { phoneNumber } = req.body;
@@ -22,48 +25,56 @@ router.post("/startCall", async (req, res) => {
     const callResponse = await makeOutgoingCall(phoneNumber);
     res.json({ success: true, callResponse });
   } catch (err) {
+    console.error("Error in /startCall:", err);
     res.status(500).json({ error: "Failed to start call" });
   }
 });
 
+// POST /api/calls/callback (Azure Webhook)
 router.post("/callback", (req, res) => {
-  const event = req.body;
-  console.log("📩 ACS Callback:", JSON.stringify(event, null, 2));
+  // Azure sends an array of CloudEvents, or sometimes a single object.
+  const incomingEvents = Array.isArray(req.body) ? req.body : [req.body];
 
-  switch (event.eventType) {
-    case "CallConnected":
+  incomingEvents.forEach((event) => {
+    // Log the event type for debugging
+    console.log(`📩 ACS Event: ${event.type || event.eventType}`);
+
+    // Normalize event type (Azure sends "Microsoft.Communication.CallConnected", etc.)
+    const eventType = event.type || event.eventType;
+
+    if (!eventType) return;
+
+    if (eventType.includes("CallConnected")) {
       broadcastCallEvent({
         type: "connected",
-        callId: event.callConnectionId,
+        callId: event.callConnectionId || event.data?.callConnectionId,
       });
-      break;
-
-    case "CallDisconnected":
-    case "CallEnded":
+    } 
+    else if (eventType.includes("CallDisconnected") || eventType.includes("CallEnded")) {
       broadcastCallEvent({
         type: "ended",
-        callId: event.callConnectionId,
+        callId: event.callConnectionId || event.data?.callConnectionId,
       });
-      break;
-
-    case "ParticipantsUpdated":
+    } 
+    else if (eventType.includes("ParticipantsUpdated")) {
       broadcastCallEvent({
         type: "participants",
-        data: event.participants,
+        data: event.participants || event.data?.participants,
       });
-      break;
-
-    case "ToneReceived":
+    } 
+    else if (eventType.includes("ToneReceived")) {
+      // This only fires if the SERVER initiated the call and subscribed to tones
       broadcastCallEvent({
         type: "tone",
-        tone: event.toneInfo?.tone,
+        tone: event.toneInfo?.tone || event.data?.toneInfo?.tone,
       });
-      break;
+    } 
+    else {
+      // console.log("⚠️ Unhandled event type:", eventType);
+    }
+  });
 
-    default:
-      console.log("⚠️ Unhandled event:", event.eventType);
-  }
-
+  // Always return 200 OK to Azure immediately
   res.sendStatus(200);
 });
 

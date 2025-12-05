@@ -1,112 +1,136 @@
 import { useEffect, useRef, useState } from "react";
-import { initCallClient, makePSTNCall, hangUpCall, toggleMute, onCallEvents } from "../components/Dialer/callClient";
+import { 
+  initCallClient, 
+  makePSTNCall, 
+  hangUpCall, 
+  toggleMute, 
+  onCallEvents,
+  onIncomingCall,    
+  acceptIncomingCall,
+  rejectIncomingCall 
+} from "../components/Dialer/callClient"; 
 import { getACSToken } from "../components/Services/api";
 
-// Handles starting/ending calls, mute and optional WebSocket events.
 export function useCallManager() {
   const [status, setStatus] = useState("idle");
   const [calling, setCalling] = useState(false);
   const [muted, setMuted] = useState(false);
-  const wsRef = useRef(null);
-  const unsubscribeRef = useRef(null);
+  const [incomingCaller, setIncomingCaller] = useState(null); 
 
   useEffect(() => {
-    // Attach SDK-level callbacks (so other parts of app can register too)
-    unsubscribeRef.current = onCallEvents(
-      () => {
+    // 1. Monitor Outgoing/Active Call States
+    const cleanupEvents = onCallEvents(
+      () => { // Connected
         setStatus("connected");
         setCalling(true);
       },
-      () => {
+      () => { // Disconnected
         setStatus("ended");
         setCalling(false);
-        setTimeout(() => {
-          setStatus("idle");
-        }, 2000);
+        setMuted(false);
+        setTimeout(() => setStatus("idle"), 2000);
       }
     );
 
-    // Optional WebSocket for external signaling (fallback / server-driven events)
-    const WS_URL = import.meta.env.VITE_CALL_WS_URL || "wss://5f5b17ccd9ce.ngrok-free.app";
-    try {
-      wsRef.current = new WebSocket(WS_URL);
-      wsRef.current.onopen = () => console.log("WebSocket connected to", WS_URL);
-      wsRef.current.onmessage = (message) => {
-        try {
-          const data = JSON.parse(message.data);
-          console.log("📡 WebSocket message:", data);
-          if (data.type === "connected") {
-            setStatus("connected");
-            setCalling(true);
-          } else if (data.type === "ended") {
-            setStatus("ended");
-            setCalling(false);
-            setTimeout(() => setStatus("idle"), 2000);
-          }
-        } catch (err) {
-          console.warn("Failed to parse ws message", err);
+    // 2. Monitor Incoming Calls
+    const cleanupIncoming = onIncomingCall((call) => {
+        if (call) {
+            setIncomingCaller(call.callerInfo.phoneNumber);
+        } else {
+            setIncomingCaller(null);
         }
-      };
-      wsRef.current.onclose = () => console.log("WebSocket closed");
-      wsRef.current.onerror = (e) => console.warn("WebSocket error", e);
-    } catch (err) {
-      console.warn("WebSocket init failed", err);
-    }
+    });
 
     return () => {
-      // cleanup
-      if (unsubscribeRef.current) unsubscribeRef.current();
-      if (wsRef.current) try { wsRef.current.close(); } catch (e) {}
+      cleanupEvents();
+      cleanupIncoming();
     };
   }, []);
 
+  // --- NEW HELPER: Force Mic Permission ---
+  const askDevicePermission = async () => {
+    try {
+      // This forces the browser popup for "Allow Microphone"
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      // We don't need the stream, just the permission, so stop it immediately
+      stream.getTracks().forEach(track => track.stop());
+      return true;
+    } catch (err) {
+      console.error("Microphone permission denied:", err);
+      alert("Please allow microphone access to make calls.");
+      return false;
+    }
+  };
+
   const startCall = async (phone) => {
-    if (!phone) throw new Error("No phone number provided");
-    if (calling) return;
+    if (!phone) return;
+    
+    // 1. PRE-FLIGHT CHECK
+    const hasPermission = await askDevicePermission();
+    if (!hasPermission) return; // Stop here if user said "Block"
+
     try {
       setCalling(true);
       setStatus("calling");
-      setMuted(false);
-
+      
       const acsData = await getACSToken();
-      await initCallClient(acsData.token, acsData.userId);
+      await initCallClient(acsData.token, acsData.userId); 
 
       await makePSTNCall(
         phone,
         import.meta.env.VITE_ACS_TRIAL_NUMBER,
-        () => {
-          setStatus("connected");
-          setCalling(true);
-        },
-        () => {
-          setStatus("ended");
-          setCalling(false);
-          setTimeout(() => setStatus("idle"), 2000);
-        }
+        () => { setStatus("connected"); setCalling(true); },
+        () => { setStatus("ended"); setCalling(false); setTimeout(() => setStatus("idle"), 2000); }
       );
     } catch (err) {
-      console.error("Call failed:", err);
+      console.error(err);
       setStatus("idle");
       setCalling(false);
-      throw err;
     }
+  };
+
+  const acceptCall = async () => {
+      // Also check permission before answering
+      const hasPermission = await askDevicePermission();
+      if (!hasPermission) return;
+
+      setIncomingCaller(null); 
+      setStatus("calling"); 
+      try {
+        await acceptIncomingCall(
+            () => { setStatus("connected"); setCalling(true); },
+            () => { setStatus("ended"); setCalling(false); setTimeout(() => setStatus("idle"), 2000); }
+        );
+      } catch(e) {
+          console.error("Failed to accept", e);
+          setStatus("idle");
+      }
+  };
+
+  const rejectCall = async () => {
+      setIncomingCaller(null);
+      await rejectIncomingCall();
   };
 
   const endCall = () => {
     hangUpCall();
-    setCalling(false);
-    setStatus("ended");
-    setTimeout(() => setStatus("idle"), 2000);
   };
 
   const toggleMuteCall = async () => {
-    try {
-      await toggleMute();
-      setMuted((m) => !m);
-    } catch (err) {
-      console.warn("toggleMuteCall error", err);
-    }
+    await toggleMute();
+    setMuted(prev => !prev);
   };
 
-  return { status, calling, muted, startCall, endCall, toggleMuteCall };
+  return { 
+      status, 
+      calling, 
+      muted, 
+      startCall, 
+      endCall, 
+      toggleMuteCall, 
+      incomingCaller, 
+      acceptCall,     
+      rejectCall      
+  };
 }

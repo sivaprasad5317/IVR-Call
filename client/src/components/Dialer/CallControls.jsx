@@ -4,30 +4,33 @@ import { FiPhone, FiMicOff } from "react-icons/fi";
 export default function CallControls({ phone, calling, muted, onCall, onMute, onBackspace }) {
   return (
     <div className="flex items-center justify-between mt-2">
+      {/* Call / End Button */}
       <button
         className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-white font-bold transition ${
-          calling ? "bg-red-500" : "bg-green-500 hover:bg-green-600"
+          calling ? "bg-red-500 hover:bg-red-600" : "bg-green-500 hover:bg-green-600"
         }`}
         onClick={onCall}
-        disabled={!phone}
+        disabled={!phone && !calling} // Disable only if no phone number AND not currently calling
       >
-        <FiPhone size={22} />
+        <FiPhone size={22} className={calling ? "rotate-[135deg]" : ""} />
         {calling ? "End" : "Call"}
       </button>
 
+      {/* Mute Button */}
       <button
         className={`ml-3 p-3 rounded-lg transition ${
-          muted ? "bg-red-500 text-white" : "bg-gray-200 text-gray-700"
+          muted ? "bg-red-500 text-white" : "bg-gray-200 text-gray-700 hover:bg-gray-300"
         }`}
         onClick={onMute}
         title="Mute"
-        disabled={!calling}
+        disabled={!calling} // Mute only works during a call
       >
         <FiMicOff size={22} />
       </button>
 
+      {/* Backspace Button */}
       <button
-        className="ml-3 p-3 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300"
+        className="ml-3 p-3 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition active:bg-gray-400"
         onClick={onBackspace}
         title="Backspace"
       >

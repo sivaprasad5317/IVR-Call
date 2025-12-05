@@ -1,24 +1,27 @@
-{
-  "contacts": [
-    {
-      "name": "test",
-      "phone": "225445555",
-      "id": "26ffe76d-b0d7-4a80-9492-438086567dfc"
-    },
-    {
-      "name": "gasad",
-      "phone": "124124",
-      "id": "9e384e9b-5663-41dc-bbb8-45f38769ab3c"
-    },
-    {
-      "name": "Siva",
-      "phone": "+919518750147",
-      "id": "13f59167-19a4-47ed-9e0e-0834b79be2d6"
-    },
-    {
-      "name": "Chetan",
-      "phone": "+919970050725",
-      "id": "6601a2c1-bec9-45fc-be96-5c18c335599f"
-    }
-  ]
-}
+[
+  {
+    "name": "test",
+    "phone": "225445555",
+    "id": "26ffe76d-b0d7-4a80-9492-438086567dfc"
+  },
+  {
+    "name": "gasad",
+    "phone": "124124",
+    "id": "9e384e9b-5663-41dc-bbb8-45f38769ab3c"
+  },
+  {
+    "name": "Siva",
+    "phone": "+919518750147",
+    "id": "13f59167-19a4-47ed-9e0e-0834b79be2d6"
+  },
+  {
+    "name": "Chetan",
+    "phone": "+919970050725",
+    "id": "6601a2c1-bec9-45fc-be96-5c18c335599f"
+  },
+  {
+    "id": "713f3972-355a-4579-9073-0c82babe1f44",
+    "name": "Chetan",
+    "phone": "+919970050725"
+  }
+]
