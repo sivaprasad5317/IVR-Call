@@ -7,7 +7,7 @@ import express from "express";
 import cors from "cors";
 import http from "http";
 import { WebSocketServer } from "ws";
-
+import speechRoutes from "./routes/speech.js";
 // Import Routes
 import callRoutes from "./routes/callRoutes.js";
 import contactsRoutes from "./routes/contacts.js";
@@ -93,6 +93,7 @@ export const broadcastCallEvent = (event) => {
 // Mount routes
 app.use("/api/calls", callRoutes); // Handles /getToken, /startCall, /callback
 app.use("/api", contactsRoutes);   // Handles /contacts
+app.use("/api/speech", speechRoutes);  // Handles speech token
 
 // Health check
 app.get("/health", (req, res) => res.json({ status: "ok", timestamp: new Date() }));
