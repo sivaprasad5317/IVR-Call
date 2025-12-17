@@ -1,5 +1,3 @@
-// server/src/app.js
-
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
@@ -8,30 +6,25 @@ import cors from "cors";
 import http from "http";
 import { WebSocketServer } from "ws";
 import speechRoutes from "./routes/speech.js";
-import callRoutes from "./routes/callRoutes.js";
 import contactsRoutes from "./routes/contacts.js";
+
+// 👇 IMPORT callRoutes AND activeAgents (The Shared List)
+import callRoutes, { activeAgents } from "./routes/callRoutes.js"; 
 
 // ------------------- Environment Setup -------------------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Explicitly load .env from server root (one level up from src)
 const explicitEnvPath = path.resolve(__dirname, "..", ".env");
 const envResult = dotenv.config({ path: explicitEnvPath });
 
 if (envResult.error) {
-  // In production (Azure App Service), .env file might not exist.
-  // Variables are loaded from the Platform Configuration instead.
   console.log("ℹ️ .env file not found (using system environment variables)");
 } else {
   console.log(`✅ [dotenv] loaded from ${explicitEnvPath}`);
 }
 
-// Diagnostic: Confirm critical variables
-const requiredVars = [
-  "AZURE_ACS_CONNECTION_STRING"
-  // Add "COSMOS_ENDPOINT", "COSMOS_KEY", etc. if you are using them in prod
-];
+const requiredVars = ["AZURE_ACS_CONNECTION_STRING"];
 const missingVars = requiredVars.filter(v => !process.env[v]);
 
 if (missingVars.length > 0) {
@@ -45,13 +38,12 @@ const app = express();
 
 app.use(express.json());
 
-// 🔒 CORS CONFIGURATION (Critical for Production)
 app.use(
   cors({
     origin: [
-      "http://localhost:5173",          // Local Dev
-      "http://127.0.0.1:5173",          // Local Dev IP
-      "https://lemon-island-04d32840f.1.azurestaticapps.net" // 👈 YOUR PRODUCTION CLIENT
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
+      "https://lemon-island-04d32840f.1.azurestaticapps.net" 
     ],
     methods: ["GET", "POST", "DELETE", "PUT"],
     credentials: true
@@ -61,15 +53,38 @@ app.use(
 // ------------------- WebSocket Setup -------------------
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
-let clients = [];
+let clients = []; // Generic UI clients
 
 wss.on("connection", (ws) => {
-  console.log("🔌 WebSocket client connected");
+  // console.log("🔌 WebSocket client connected");
   clients.push(ws);
+  let currentUserId = null; // Track ID for THIS connection
 
+  ws.on("message", (message) => {
+    try {
+        const data = JSON.parse(message);
+        
+        // 👇 HANDLE REGISTRATION (Add "Real" Agent)
+        if (data.type === 'REGISTER') {
+            currentUserId = data.userId;
+            if (activeAgents) {
+                activeAgents.add(currentUserId);
+                console.log(`✅ [WS] Agent Registered: ${currentUserId}. Total Active: ${activeAgents.size}`);
+            }
+        }
+    } catch (e) {
+        console.error("WS Parse Error", e);
+    }
+  });
+
+  // 👇 HANDLE DISCONNECT (Remove "Ghost" Agent)
   ws.on("close", () => {
     clients = clients.filter((c) => c !== ws);
-    console.log("❌ WebSocket client disconnected");
+    
+    if (currentUserId && activeAgents) {
+        activeAgents.delete(currentUserId); 
+        console.log(`🧹 [WS] Cleanup: Removed ${currentUserId}. Total Active: ${activeAgents.size}`);
+    }
   });
 
   ws.on("error", (err) => {
@@ -82,7 +97,7 @@ wss.on("connection", (ws) => {
  */
 export const broadcastCallEvent = (event) => {
   clients.forEach((client) => {
-    if (client.readyState === 1) { // 1 = OPEN
+    if (client.readyState === 1) { 
       try {
         client.send(JSON.stringify(event));
       } catch (err) {
@@ -101,7 +116,6 @@ app.use("/api/speech", speechRoutes);
 app.get("/health", (req, res) => res.json({ status: "ok", timestamp: new Date() }));
 
 // ------------------- Start Server -------------------
-// Azure App Service automatically sets process.env.PORT
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);

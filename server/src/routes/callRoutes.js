@@ -10,12 +10,10 @@ const router = express.Router();
 // ---------------------------------------------------------
 
 // 1. POOL OF AGENTS
-// We use a Set to store active User IDs. 
-// When a user opens the app, they register and join this pool.
-const activeAgents = new Set(); 
+// We export this Set so app.js can clean it up via WebSocket
+export const activeAgents = new Set(); 
 
 // 2. DEDUPLICATION LOCK 
-// Prevents "Double Redirects" (Error 482/412) by locking the Caller Number for 10s.
 const redirectLocks = new Map();
 
 // --- HELPER: GET NEXT AGENT ---
@@ -34,7 +32,7 @@ function getNextAvailableAgent() {
 }
 
 // POST /api/calls/register
-// Client calls this on startup (useCallManager.js)
+// (Optional fallback: Client still calls this, but WS handles the real cleanup)
 router.post("/register", (req, res) => {
     const { userId } = req.body;
     if (!userId) return res.status(400).json({ error: "Missing userId" });
@@ -42,8 +40,7 @@ router.post("/register", (req, res) => {
     // Add to pool
     activeAgents.add(userId);
     
-    console.log(`✅ [Receptionist] Agent Registered. Total Active: ${activeAgents.size}`);
-    // console.log(`📋 Pool:`, [...activeAgents]); 
+    console.log(`✅ [HTTP] Agent Registered. Total Active: ${activeAgents.size}`);
     
     res.sendStatus(200);
 });
