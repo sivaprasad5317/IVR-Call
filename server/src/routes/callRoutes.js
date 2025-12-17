@@ -6,7 +6,7 @@ import { broadcastCallEvent } from "../app.js";
 const router = express.Router();
 
 // ---------------------------------------------------------
-// PRODUCTION RECEPTIONIST LOGIC (Round Robin)
+// RECEPTIONIST LOGIC (LIFO - Last In, First Out)
 // ---------------------------------------------------------
 
 // 1. POOL OF AGENTS
@@ -20,13 +20,13 @@ const redirectLocks = new Map();
 function getNextAvailableAgent() {
     if (activeAgents.size === 0) return null;
     
-    // Pick the first agent
+    // Convert Set to Array
     const agents = [...activeAgents];
-    const nextAgent = agents[0];
-    
-    // Rotate: Remove from front, add to back
-    activeAgents.delete(nextAgent);
-    activeAgents.add(nextAgent);
+
+    // 👇 FIXED LOGIC: ALWAYS PICK THE NEWEST AGENT
+    // Instead of picking agents[0] (the oldest/ghost), we pick the last one.
+    // This guarantees the call goes to the browser tab that just opened.
+    const nextAgent = agents[agents.length - 1]; 
     
     return nextAgent;
 }
