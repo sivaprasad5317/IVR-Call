@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import axios from "axios"; 
+import { useEffect, useState, useRef } from "react";
 import { 
   initCallClient, 
   makePSTNCall, 
@@ -21,11 +20,14 @@ export function useCallManager() {
   // State for the Pop-up Modal (Null = No popup)
   const [incomingCaller, setIncomingCaller] = useState(null);
   
-  // NEW: Persistent State for the Connected Screen
+  // Persistent State for the Connected Screen
   const [activePhoneNumber, setActivePhoneNumber] = useState(""); 
 
+  // Track WebSocket so we can close it on unmount
+  const wsRef = useRef(null);
+
   // ---------------------------------------------------------
-  // 1. AUTO-CONNECT & REGISTER
+  // 1. AUTO-CONNECT & REGISTER (WebSocket Version)
   // ---------------------------------------------------------
   useEffect(() => {
     const connectToAzure = async () => {
@@ -35,13 +37,25 @@ export function useCallManager() {
         const activeUserId = await initCallClient(acsData.token, acsData.userId); 
         console.log(`✅ [useCallManager] Connected. Active Agent ID: ${activeUserId}`);
 
+        // WEBSOCKET REGISTRATION
+        // This links the browser tab to the Server's "Active Agents" list.
         const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
-        try {
-            await axios.post(`${API_URL}/api/calls/register`, { userId: activeUserId });
-            console.log(`✅ [useCallManager] Registered CORRECT ID: ${activeUserId}`);
-        } catch (regErr) {
-            console.warn("⚠️ [useCallManager] Server registration failed:", regErr.message);
-        }
+        const WS_URL = API_URL.replace(/^http/, 'ws'); // Handles http -> ws and https -> wss
+
+        const ws = new WebSocket(WS_URL);
+        wsRef.current = ws; 
+
+        ws.onopen = () => {
+             console.log("✅ [WS] Connected to Server");
+             // Send "REGISTER" immediately so Server knows who we are
+             ws.send(JSON.stringify({ 
+                 type: 'REGISTER', 
+                 userId: activeUserId 
+             }));
+        };
+
+        ws.onerror = (err) => console.error("❌ [WS] Connection Error:", err);
+        
       } catch (err) {
         console.error("❌ [useCallManager] Failed to auto-connect:", err);
         if (err.message && (err.message.includes("401") || err.message.includes("403"))) {
@@ -49,7 +63,15 @@ export function useCallManager() {
         }
       }
     };
+
     connectToAzure();
+
+    // CLEANUP: Close socket when component unmounts (closes/refreshes)
+    return () => {
+        if (wsRef.current) {
+            wsRef.current.close();
+        }
+    };
   }, []);
 
   // ---------------------------------------------------------
@@ -65,7 +87,7 @@ export function useCallManager() {
         setStatus("ended");
         setCalling(false);
         setMuted(false);
-        setActivePhoneNumber(""); // Clear the number when call ends
+        setActivePhoneNumber(""); 
         setTimeout(() => setStatus("idle"), 2000);
       }
     );
@@ -91,10 +113,7 @@ export function useCallManager() {
         }
 
         console.log(`⚛️ React Hook: Incoming Call from [${callerNum}]`);
-        
-        // 1. Set text for the Modal
         setIncomingCaller(callerNum); 
-        // 2. Set text for the Connected Screen (So it persists after accept)
         setActivePhoneNumber(callerNum);
     });
 
@@ -110,7 +129,6 @@ export function useCallManager() {
   // ---------------------------------------------------------
   // 3. ACTIONS
   // ---------------------------------------------------------
-
   const askDevicePermission = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -129,7 +147,7 @@ export function useCallManager() {
     try {
       setCalling(true);
       setStatus("calling");
-      setActivePhoneNumber(phone); // Save dialed number for display
+      setActivePhoneNumber(phone); 
 
       const acsData = await getACSToken();
       await initCallClient(acsData.token, acsData.userId); 
@@ -155,7 +173,7 @@ export function useCallManager() {
             () => { 
                 setStatus("connected"); 
                 setCalling(true); 
-                setIncomingCaller(null); // Close modal, but 'activePhoneNumber' keeps the data
+                setIncomingCaller(null); 
             },
             () => { 
                 setStatus("ended"); 
@@ -178,7 +196,6 @@ export function useCallManager() {
   const endCall = () => hangUpCall();
   const toggleMuteCall = async () => await toggleMute();
 
-  // EXPOSE 'activePhoneNumber' to the UI
   return { 
       status, calling, muted, incomingCaller, activePhoneNumber,
       startCall, endCall, toggleMuteCall, acceptCall, rejectCall      
