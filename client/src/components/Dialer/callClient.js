@@ -5,7 +5,7 @@ import { initAudioMixer } from "../../services/audioMixer";
 // Global State Variables
 let callClient = null;
 let callAgent = null;
-let currentCall = null;
+let currentCall = null; // The Active Call Object
 let incomingCall = null; 
 let isMuted = false;
 
@@ -23,12 +23,9 @@ const muteStateCallbacks = new Set();
 
 /**
  * Initialize the Azure Call Client
- * RETURNS: The actual User ID that was used to initialize the agent.
  */
 export const initCallClient = async (token, userId) => {
-  // ----------------------------------------------------------------
   // 1. ZOMBIE KILLER FIX: Always dispose old agents
-  // ----------------------------------------------------------------
   if (callAgent) {
       console.warn("♻️ Disposing stale Call Agent to force a fresh connection...");
       try {
@@ -39,7 +36,6 @@ export const initCallClient = async (token, userId) => {
       callAgent = null;
       initPromise = null; 
   }
-  // ----------------------------------------------------------------
 
   // 2. Standard Lock
   if (initPromise) {
@@ -163,7 +159,10 @@ export const acceptIncomingCall = async (onConnected, onDisconnected) => {
   } catch (err) {}
 
   try {
+      // 👇 KEY: We strictly assign the result to 'currentCall'
       currentCall = await incomingCall.accept(acceptOptions);
+      console.log("✅ Incoming Call Accepted. Assigned to currentCall:", currentCall.id);
+      
       subscribeToCallEvents(currentCall, onConnected, onDisconnected);
       incomingCall = null; 
   } catch (err) {
@@ -251,9 +250,15 @@ export const onMuteChange = (cb) => { muteStateCallbacks.add(cb); return () => m
 export const getCurrentCall = () => currentCall;
 export const getIsMuted = () => isMuted;
 
-// DTMF Logic
+// -----------------------------------------------------------------------------
+// 👇 FIXED DTMF LOGIC
+// -----------------------------------------------------------------------------
 export const sendDTMF = async (digits) => {
-    if (!currentCall) return; 
+    if (!currentCall) {
+        console.warn("⚠️ Cannot send DTMF: No active call.");
+        return;
+    }
+
     const mapCharToTone = (c) => { 
         switch (c) {
             case "0": return "Num0"; case "1": return "Num1"; case "2": return "Num2";
@@ -263,19 +268,35 @@ export const sendDTMF = async (digits) => {
             default: return null;
         }
     };
+
+    console.log(`📠 Sending DTMF Digits: ${digits}`);
+
     for (const ch of digits) {
         const tone = mapCharToTone(ch);
         if (!tone) continue;
+
         try {
-            if (currentCall.startDtmfTone && currentCall.stopDtmfTone) {
-                await currentCall.startDtmfTone(tone);
-                await new Promise(r => setTimeout(r, 1200)); 
-                await currentCall.stopDtmfTone();
-            } else if (currentCall.sendDtmf) {
+            // FIX: Always prioritize 'sendDtmf' (Signaling) over 'startDtmfTone' (Media)
+            // 'sendDtmf' sends the standard RFC 2833 signal that IVRs expect.
+            if (currentCall.sendDtmf) {
+                console.log(`➡️ Sending Tone (Signal): ${tone}`);
                 await currentCall.sendDtmf(tone);
+            } 
+            // Fallback: Only use startDtmfTone if sendDtmf is missing (Rare)
+            else if (currentCall.startDtmfTone && currentCall.stopDtmfTone) {
+                console.warn(`⚠️ Using Legacy Audio Tone for: ${tone}`);
+                await currentCall.startDtmfTone(tone);
+                await new Promise(r => setTimeout(r, 200)); // Reduced from 1200ms
+                await currentCall.stopDtmfTone();
+            } else {
+                console.error("❌ No DTMF method available on currentCall object.");
             }
-        } catch (err) {}
-        await new Promise(r => setTimeout(r, 500));
+        } catch (err) {
+            console.error("❌ DTMF Error:", err);
+        }
+        
+        // Short pause between digits to ensure separation
+        await new Promise(r => setTimeout(r, 400));
     }
 };
 
