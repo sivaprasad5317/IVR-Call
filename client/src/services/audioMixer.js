@@ -1,34 +1,38 @@
+// client/src/services/audioMixer.js
+
 let audioContext = null;
 let mediaStreamDestination = null;
 let micSource = null;
 let keepAliveOscillator = null;
 let hiddenAudioSink = null;
+let micStreamReference = null;
 
+/**
+ * Initialize the Audio Mixer (Context + Mic + Destination)
+ */
 export const initAudioMixer = async () => {
   console.log("🎛️ [Mixer] initAudioMixer() called.");
 
-  if (mediaStreamDestination && mediaStreamDestination.stream.active) {
-    console.log("ℹ️ [Mixer] Stream already active. Returning existing stream.");
+  // 1. Return existing stream if active (Prevents duplicate inits)
+  if (mediaStreamDestination && mediaStreamDestination.stream.active && audioContext && audioContext.state !== 'closed') {
+    if (audioContext.state === "suspended") await audioContext.resume();
+    console.log("ℹ️ [Mixer] Stream already active. Reusing.");
     return mediaStreamDestination.stream;
   }
 
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  audioContext = new AudioContextClass();
+
+  if (audioContext.state === "suspended") {
+      await audioContext.resume();
+  }
   
-  // ---------------------------------------------------------
-  // FIX: REMOVE FORCED SAMPLE RATE
-  // Let the browser pick the native hardware rate (e.g. 44100 or 48000)
-  // This prevents resampling glitches on the microphone input.
-  // ---------------------------------------------------------
-  audioContext = new AudioContextClass(); 
-  
-  console.log(`🎛️ [Mixer] AudioContext Created.`);
-  console.log(`📊 [Mixer] Native Sample Rate: ${audioContext.sampleRate} Hz`);
-  console.log(`📊 [Mixer] State: ${audioContext.state}`);
+  console.log(`🎛️ [Mixer] AudioContext Created. Rate: ${audioContext.sampleRate} Hz`);
 
   mediaStreamDestination = audioContext.createMediaStreamDestination();
-  mediaStreamDestination.channelCount = 1; // Mono is still best for phone
+  mediaStreamDestination.channelCount = 1; 
 
-  // Keep Alive Oscillator
+  // 2. Keep-Alive Oscillator (Prevents audio dropout)
   keepAliveOscillator = audioContext.createOscillator();
   const silentGain = audioContext.createGain();
   keepAliveOscillator.type = 'sine';
@@ -37,33 +41,40 @@ export const initAudioMixer = async () => {
   keepAliveOscillator.connect(silentGain);
   silentGain.connect(mediaStreamDestination);
   keepAliveOscillator.start();
-  console.log("🎛️ [Mixer] Keep-Alive signal started.");
 
+  // 3. Microphone Setup (Optimized for IVR)
   try {
     const micStream = await navigator.mediaDevices.getUserMedia({ 
         audio: { 
             deviceId: "default", 
             channelCount: 1, 
-            // Removed forced sampleRate - let the hardware decide
-            echoCancellation: false, 
-            noiseSuppression: false, 
-            autoGainControl: false 
+            echoCancellation: true, 
+            noiseSuppression: true, 
+            autoGainControl: true 
         } 
     });
     
+    micStreamReference = micStream;
     const micTrack = micStream.getAudioTracks()[0];
-    const micSettings = micTrack.getSettings();
-    console.log("🎤 [Mixer] Microphone Attached:", micTrack.label);
-    console.log(`🎤 [Mixer] Mic Rate: ${micSettings.sampleRate} Hz`);
+    console.log("🎤 [Mixer] Mic Attached:", micTrack.label);
 
     micSource = audioContext.createMediaStreamSource(micStream);
-    micSource.connect(mediaStreamDestination);
+
+    // Boost Mic Volume (1.5x) so IVR hears you clearly
+    const micGain = audioContext.createGain();
+    micGain.gain.value = 1.5; 
+
+    micSource.connect(micGain);
+    micGain.connect(mediaStreamDestination);
+    
+    console.log("✅ [Mixer] Microphone connected & boosted.");
+
   } catch (err) {
     console.error("❌ [Mixer] Mic capture failed:", err);
     throw err;
   }
 
-  // Hidden Sink
+  // 4. Hidden Sink (Chrome Hack)
   if (!hiddenAudioSink) {
     hiddenAudioSink = document.createElement("audio");
     hiddenAudioSink.style.display = "none";
@@ -71,41 +82,39 @@ export const initAudioMixer = async () => {
   }
   hiddenAudioSink.srcObject = mediaStreamDestination.stream;
   hiddenAudioSink.volume = 0; 
-  
-  hiddenAudioSink.play()
-    .then(() => console.log("🎛️ [Mixer] Hidden Sink playing."))
-    .catch(e => console.warn("⚠️ [Mixer] Hidden Sink blocked:", e));
+  hiddenAudioSink.play().catch(e => console.warn("⚠️ [Mixer] Sink blocked:", e));
 
   return mediaStreamDestination.stream;
 };
 
+/**
+ * Injects TTS Audio into the active stream
+ */
 export const injectAudioBuffer = async (audioData) => {
-  if (!audioContext) throw new Error("Mixer not init");
-
-  console.log(`🔊 [Mixer] Request to inject ${audioData.byteLength} bytes.`);
+  // 👇 FIX: Auto-Recover if context is dead
+  if (!audioContext || audioContext.state === 'closed') {
+      console.warn("⚠️ [Mixer] Context was closed. Re-initializing now...");
+      await initAudioMixer();
+  }
 
   if (audioContext.state === "suspended") {
     await audioContext.resume();
   }
 
   try {
-    // 1. Decode Audio
-    // The browser will automatically resample the 16k Robot Voice 
-    // to match the 44.1k/48k Context. This is safe.
     const audioBuffer = await audioContext.decodeAudioData(audioData.slice(0));
     
-    console.log(`📉 [Mixer] Audio Ready for Playback:`);
-    console.log(`   - Duration: ${audioBuffer.duration.toFixed(2)}s`);
-    console.log(`   - Context Rate: ${audioContext.sampleRate} Hz`);
-
     const ttsSource = audioContext.createBufferSource();
     ttsSource.buffer = audioBuffer;
 
     const boostGain = audioContext.createGain();
-    boostGain.gain.value = 2.0; 
+    boostGain.gain.value = 2.0; // Boost TTS volume
 
+    // Route TTS to ACS (Call)
     ttsSource.connect(boostGain);
     boostGain.connect(mediaStreamDestination);
+
+    // Route TTS to Speakers (Monitor)
     ttsSource.connect(audioContext.destination); 
 
     ttsSource.start(0);
@@ -122,4 +131,15 @@ export const injectAudioBuffer = async (audioData) => {
   }
 };
 
-export const stopInjection = () => {};
+/**
+ * Cleanup Function
+ * 👇 FIX: Made Safe. Does NOT destroy the context/mic anymore.
+ */
+export const stopInjection = () => {
+    // We intentionally DO NOT close the AudioContext here.
+    // Why? Because the Microphone is using it for the active call.
+    // If we close it, the user goes mute.
+    console.log("ℹ️ [Mixer] stopInjection called (No-op to protect Mic stream).");
+    
+    // Only close if you specifically want to end the call (handled by page refresh usually)
+};
